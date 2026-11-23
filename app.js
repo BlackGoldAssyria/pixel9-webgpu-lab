@@ -114,7 +114,10 @@ $('mem-start').addEventListener('click',async()=>{
   let device=null,held=[],maxMiB=0,reason='Target reached',deviceLost=false;
   show('mem-pass','0 MiB');show('mem-result','Running');$('mem-progress').max=cap;$('mem-progress').value=0;
   try{
-    device=await state.adapter.requestDevice();
+    // A fresh adapter is needed after the prior benchmark destroys its GPUDevice on some Chrome/Dawn builds.
+    const adapter=await navigator.gpu.requestAdapter({powerPreference:'high-performance'});
+    if(!adapter)throw new Error('No GPU adapter available for this run.');
+    device=await adapter.requestDevice();
     device.lost.then(info=>{if(state.memRunning){deviceLost=true;log(`GPU device lost: ${info.message||info.reason}`);}});
     for(let allocation=CHUNK_MIB;allocation<=cap;allocation+=CHUNK_MIB){
       if(state.stopRequested){reason='Stopped by user';break;}
