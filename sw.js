@@ -1,6 +1,6 @@
 // Prefer new same-origin app files online, keep the last good shell offline.
 // External model/CDN requests are handled by the browser/Transformers.js.
-const CACHE = 'pixel9-local-ai-lab-shell-v2-5';
+const CACHE = 'pixel9-local-ai-lab-shell-v2-6';
 const PREFIX = 'pixel9-local-ai-lab-shell-';
 const SHELL = ['./', './index.html', './app.js', './manifest.webmanifest', './icon.png', './icon.svg'];
 self.addEventListener('install', event => {

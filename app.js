@@ -197,36 +197,62 @@ $('generate').addEventListener('click',async()=>{
   if(!state.pipe||state.busy)return;
   const prompt=$('prompt').value.trim();if(!prompt){setModelStatus('Enter a prompt.');return;}
   state.busy=true;refreshControls();
-  const maxTokens=Number($('max-tokens').value);let answer='';let firstMs=null;const start=performance.now();
+  const maxTokens=Number($('max-tokens').value),start=performance.now();
+  let answer='',firstMs=null,firstTokenMs=null,lastTokenMs=null,generatedTokenCount=0,streamedText='';
+  const firstTokenIds=[];
   try{
     setModelStatus('Generating locally…');
     const {TextStreamer}=state.pipelineLib;
     const streamer=new TextStreamer(state.pipe.tokenizer,{
       skip_prompt:true,skip_special_tokens:true,
-      callback_function:chunk=>{if(firstMs===null&&String(chunk).trim().length)firstMs=performance.now()-start;}
+      token_callback_function:ids=>{
+        const ms=performance.now()-start;
+        if(firstTokenMs===null)firstTokenMs=ms;
+        lastTokenMs=ms;
+        generatedTokenCount+=ids.length;
+        for(const id of ids){if(firstTokenIds.length<16)firstTokenIds.push(String(id));}
+      },
+      callback_function:chunk=>{
+        streamedText+=chunk;
+        if(firstMs===null&&String(chunk).trim().length)firstMs=performance.now()-start;
+      }
     });
     const result=await state.pipe([{role:'user',content:prompt}],{max_new_tokens:maxTokens,do_sample:false,streamer});
     const elapsed=performance.now()-start;
     const generated=result?.[0]?.generated_text;
-    answer=Array.isArray(generated)?String(generated.filter(m=>m.role==='assistant').at(-1)?.content??''):String(generated??JSON.stringify(result));
+    const content=Array.isArray(generated)?generated.filter(m=>m.role==='assistant').at(-1)?.content:generated;
+    answer=(typeof content==='string'?content:Array.isArray(content)?content.map(p=>typeof p==='string'?p:p?.text??'').join(''):'')||streamedText;
     let tokens=null;
     try{
       const encoded=state.pipe.tokenizer(answer,{add_special_tokens:false});
       const ids=encoded.input_ids;
       tokens=ids?.size??ids?.data?.length??(Array.isArray(ids)?ids.length:null);
     }catch(_){ /* Output token estimate unavailable */ }
-    const tokps=Number.isFinite(tokens)?tokens/(elapsed/1000):null;
+    const hasOutput=!!answer.trim();
+    const tokps=hasOutput&&Number.isFinite(tokens)?tokens/(elapsed/1000):null;
+    const decodeMs=lastTokenMs===null||firstTokenMs===null?null:lastTokenMs-firstTokenMs;
+    const decodeTps=generatedTokenCount>1&&decodeMs>0?(generatedTokenCount-1)/(decodeMs/1000):null;
+    let resultPreview=null;
+    try{resultPreview=JSON.stringify(result,(_k,v)=>typeof v==='bigint'?String(v):v).slice(0,1800);}catch(_){}
     show('answer',answer||'(empty response)');show('first-ms',fmtS(firstMs));show('generation-ms',fmtS(elapsed));
     show('tokps',Number.isFinite(tokps)?`${tokps.toFixed(2)} tok/s`:'Unavailable');
-    addRecord({type:'model',timestamp:when(),outcome:'PASS',model:state.loaded.id,backend:state.loaded.backend,dtype:state.loaded.dtype,
-      model_load_ms:state.loadMs,first_stream_text_ms:firstMs,generation_ms:elapsed,retokenised_output_tokens:tokens,
-      full_wall_tokens_per_s:tokps,max_new_tokens:maxTokens,prompt,output:answer,summary:`${state.loaded.id}: ${tokps?.toFixed(2)??'?'} tok/s`});
-    setModelStatus('Generation completed. Try a second prompt or export results.');
+    const outcome=hasOutput?'PASS':'EMPTY_OUTPUT';
+    addRecord({type:'model',timestamp:when(),outcome,model:state.loaded.id,backend:state.loaded.backend,dtype:state.loaded.dtype,
+      model_load_ms:state.loadMs,first_stream_text_ms:firstMs,first_generated_token_ms:firstTokenMs,
+      generation_ms:elapsed,generated_token_count:generatedTokenCount,first_generated_token_ids:firstTokenIds,
+      decode_ms:decodeMs,decode_tokens_per_s:decodeTps,retokenised_output_tokens:tokens,
+      full_wall_tokens_per_s:tokps,max_new_tokens:maxTokens,prompt,output:answer,
+      streamed_text_preview:streamedText.slice(0,500),raw_result_preview:resultPreview,
+      summary:hasOutput?`${state.loaded.id}: ${tokps?.toFixed(2)??'?'} tok/s`:
+        `${state.loaded.id}: empty text (${generatedTokenCount} raw tokens)`});
+    setModelStatus(hasOutput?'Generation completed. Try another prompt or export results.':
+      `No visible output; ${generatedTokenCount} raw tokens reported. Export JSON for diagnosis.`);
   }catch(e){setModelStatus(`Generation failed: ${e?.message||e}`);
     addRecord({type:'model',timestamp:when(),outcome:'FAIL',model:state.loaded?.id,backend:state.loaded?.backend,
       dtype:state.loaded?.dtype,prompt,max_new_tokens:maxTokens,reason:String(e?.message||e),summary:'Generation error'});
   }finally{state.busy=false;refreshControls();}
 });
+
 $('unload').addEventListener('click',unload);
 function exportPayload(){return {schema:'pixel9-local-ai-lab-v2',created_at:when(),user_agent:navigator.userAgent,
   device_memory_gb_reported:navigator.deviceMemory??null,gpu:gpuInfo(),records:state.records,events:state.log,
