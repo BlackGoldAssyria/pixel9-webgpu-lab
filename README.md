@@ -1,25 +1,28 @@
-# Pixel 9 Local AI Lab (GitHub Pages PWA)
+# Pixel 9 Local AI Lab
 
-This is a static, browser-based GPU and Transformers.js benchmark. No backend, build pipeline or Python installation is needed. Files must remain in the same folder.
+A static, browser-based WebGPU memory and Transformers.js inference benchmark. No Python server, build system, or Android APK required.
 
-## Publish
+## Publish with GitHub Pages
 
-1. Create a **public** repository named `pixel9-webgpu-lab` in your own GitHub account. Do not reuse an internal/company repository.
-2. Upload the six website files from this folder to the **root** of the repository (not the ZIP file): `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.png`, `icon-512.png`. `README.md` is optional.
-3. In **Settings > Pages**, choose **Deploy from a branch**, branch `main`, folder `/ (root)`, then Save.
-4. Open `https://YOUR-USERNAME.github.io/pixel9-webgpu-lab/` on Android Chrome over Wi-Fi.
+1. Open **Settings > Pages** in this repository.
+2. Under **Build and deployment**, set source to **Deploy from a branch**, branch **main**, folder **/ (root)**, and save.
+3. When GitHub finishes publishing, visit https://blackgoldassyria.github.io/pixel9-webgpu-lab/ in Chrome on the Pixel 9.
 
-## First PWA test
+The app is already in the repository root: `index.html`, `app.js`, `sw.js`, `manifest.webmanifest`, `icon.png` and `icon.svg`. The manifest and URLs are relative so they work under a project path.
 
-1. Confirm `Secure origin: Yes`, `WebGPU: Available` and `PWA / offline shell: Shell active` (reload once if it initially says `Shell pending`).
-2. From Chrome's menu, choose **Install app** or **Add to Home screen** if offered. Launch it from the home screen. Check the PWA status says `Installed`.
-3. While online, load the page once fully. Turn on airplane mode, reopen the installed app and confirm the interface and GPU inspection still work. **Do not expect model downloads or model inference to work offline yet.**
-4. Reconnect to Wi-Fi and run cautious memory tests and small-model inference. Export results before leaving, because model records are currently session-only. Avoid confidential prompts.
+## First test
 
-## Notes
+1. Load the page over Wi-Fi. Check that **Secure origin** says **Yes** and **WebGPU** says **Available**.
+2. Reload if the PWA indicator initially reports **Shell pending**. It should report **Shell active** once the service worker controls the page.
+3. In Chrome, use **Install app** or **Add to Home screen** if offered. Launch from the icon; the PWA indicator should say **Installed**.
+4. Reopen in airplane mode. The offline application interface should load, but remote Transformers.js dependencies, WASM and model weights are **not guaranteed to work offline**.
+5. Reconnect to Wi-Fi and start with GPU inspection or the smallest model. Run the 256 MiB memory test before trying more demanding sizes. Export results before reloading.
 
-- Only the same-origin application shell is precached by `sw.js`; third-party Transformers.js modules and model weights are *not* made reliably available offline by this package.
-- The service worker uses cache-first shell assets. When publishing a new version, update the version string in `sw.js`, reload once to install the updated worker, and reload again if necessary to see the new code.
-- In a GitHub Pages project path, all file references, manifest start URL and service worker registration deliberately use `./` relative paths.
-- GPU memory allocation tests can crash the browser tab. Start at 256 MiB and only increase after successful runs.
-- Do not commit credentials, user data, certificates, private models or company documents to a public repository.
+## Boundaries
+
+- Inference is on-device after the model is downloaded, but libraries and models are retrieved from third-party servers. Do not enter confidential prompts.
+- Benchmark results are session-only; only memory progress checkpoints persist in localStorage.
+- The memory probe does not measure total GPU VRAM.
+- The service worker caches only the application shell. For updates, bump its CACHE version, reload to install it, and reload again if necessary.
+- Running larger memory tests can terminate the Chrome tab or PWA. Large models can fail to load.
+- The `icon.svg` is a scalable installed-app icon; `icon.png` supplies a 192px fallback. Exact Chrome install behavior should be verified on the Pixel.
