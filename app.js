@@ -66,33 +66,27 @@ async function probeGPU(){
   }catch(e){state.adapter=null;show('webgpu','Error');show('adapter-debug',String(e));log(`WebGPU probe error: ${e}`);}
   refreshControls();
 }
-// One compute invocation touches one 4096-byte page. 32 MiB buffers deliberately stay below
-// default binding limits. Sampled pages are copied back to a small MAP_READ buffer.
-const shader=`
-@group(0) @binding(0) var<storage, read_write> words: array<u32>;
-@group(0) @binding(1) var<uniform> meta: vec4<u32>;
-@compute @workgroup_size(128)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-  let p = gid.x;
-  if (p < meta.x) { words[p * 1024u] = meta.y ^ p ^ 0x9e3779b9u; }
-}`;
-async function testChunk(device,pipeline,seed){
+// GPU clear touches the full buffer; nonzero sample writes and readback confirm the
+// queue completed. This tests cumulative live GPU buffers, not physical VRAM capacity.
+async function testChunk(device,seed){
   const bytes=CHUNK_MIB*MB;
-  let buf=null,read=null,uniform=null,errors=[];
+  let buf=null,read=null,errors=[];
   device.pushErrorScope('out-of-memory');device.pushErrorScope('validation');
   try{
-    buf=device.createBuffer({size:bytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC});
-    uniform=device.createBuffer({size:16,usage:GPUBufferUsage.UNIFORM|GPUBufferUsage.COPY_DST});
+    buf=device.createBuffer({size:bytes,usage:GPUBufferUsage.STORAGE|GPUBufferUsage.COPY_SRC|GPUBufferUsage.COPY_DST});
     const pages=bytes/4096;
-    device.queue.writeBuffer(uniform,0,new Uint32Array([pages,seed>>>0,0,0]));
-    const group=device.createBindGroup({layout:pipeline.getBindGroupLayout(0),entries:[{binding:0,resource:{buffer:buf}},{binding:1,resource:{buffer:uniform}}]});
     const readPages=[0,Math.floor(pages/4),Math.floor(pages/2),Math.floor(3*pages/4),pages-1];
     read=device.createBuffer({size:readPages.length*256,usage:GPUBufferUsage.COPY_DST|GPUBufferUsage.MAP_READ});
-    const encoder=device.createCommandEncoder();
-    const pass=encoder.beginComputePass();pass.setPipeline(pipeline);pass.setBindGroup(0,group);
-    pass.dispatchWorkgroups(Math.ceil(pages/128));pass.end();
-    readPages.forEach((p,i)=>encoder.copyBufferToBuffer(buf,p*4096,read,i*256,4));
-    device.queue.submit([encoder.finish()]);
+    const clear=device.createCommandEncoder();
+    clear.clearBuffer(buf);
+    device.queue.submit([clear.finish()]);
+    for(const p of readPages){
+      const expected=((seed>>>0)^p^0x9e3779b9)>>>0;
+      device.queue.writeBuffer(buf,p*4096,new Uint32Array([expected]));
+    }
+    const verify=device.createCommandEncoder();
+    readPages.forEach((p,i)=>verify.copyBufferToBuffer(buf,p*4096,read,i*256,4));
+    device.queue.submit([verify.finish()]);
     await read.mapAsync(GPUMapMode.READ);
     const array=new DataView(read.getMappedRange());
     readPages.forEach((p,i)=>{
@@ -103,7 +97,6 @@ async function testChunk(device,pipeline,seed){
   }catch(e){errors.push(String(e?.message||e));}
   finally{
     if(read){try{if(read.mapState==='mapped')read.unmap();}catch(_){ }read.destroy();}
-    if(uniform)uniform.destroy();
     for(const name of ['validation','out-of-memory']){
       try{const e=await device.popErrorScope();if(e)errors.push(`${name}: ${e.message}`);}catch(e){errors.push(`error scope: ${e.message}`);}
     }
@@ -123,11 +116,10 @@ $('mem-start').addEventListener('click',async()=>{
   try{
     device=await state.adapter.requestDevice();
     device.lost.then(info=>{if(state.memRunning){deviceLost=true;log(`GPU device lost: ${info.message||info.reason}`);}});
-    const pipeline=device.createComputePipeline({layout:'auto',compute:{module:device.createShaderModule({code:shader}),entryPoint:'main'}});
     for(let allocation=CHUNK_MIB;allocation<=cap;allocation+=CHUNK_MIB){
       if(state.stopRequested){reason='Stopped by user';break;}
       if(deviceLost){reason='GPU device lost';break;}
-      const chunk=await testChunk(device,pipeline,(0x8ace0000+allocation)>>>0);
+      const chunk=await testChunk(device,(0x8ace0000+allocation)>>>0);
       held.push(chunk);maxMiB=allocation;
       $('mem-progress').value=allocation;show('mem-pass',`${allocation} MiB`);
       show('mem-status',`Verified ${allocation} / ${cap} MiB in ${held.length} buffers; holding until test ends.`);
@@ -143,7 +135,7 @@ $('mem-start').addEventListener('click',async()=>{
     show('mem-result',reason);checkpoint({status:reason==='Target reached'?'complete':reason==='Stopped by user'?'stopped':'failed',target_mib:cap,largest_verified_mib:maxMiB,reason,updated_at:when()});
     setMemStatus(`Finished. Largest verified cumulative allocation: ${maxMiB} MiB. Buffers released.`);
     addRecord({type:'memory',timestamp:when(),outcome:reason==='Target reached'?'PASS':reason==='Stopped by user'?'STOP':'FAIL',
-      target_mib:cap,largest_verified_mib:maxMiB,chunk_mib:CHUNK_MIB,method:'GPU compute writes one u32 per 4 KiB page, sampled GPU-to-CPU readback',
+      target_mib:cap,largest_verified_mib:maxMiB,chunk_mib:CHUNK_MIB,method:'32 MiB STORAGE buffers cleared by GPU, five nonzero probes per buffer verified by GPU-to-CPU readback',
       reason,duration_ms:performance.now()-start,summary:`${maxMiB} / ${cap} MiB; ${reason}`,gpu_info:gpuInfo()});
   }
 });

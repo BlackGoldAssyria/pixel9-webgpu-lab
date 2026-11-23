@@ -1,6 +1,6 @@
 // Only cache same-origin application shell. Remote model files and CDN/WASM assets
 // are managed by browser/Transformers.js caches; offline model use is not guaranteed.
-const CACHE='pixel9-local-ai-lab-shell-v2-2';
+const CACHE='pixel9-local-ai-lab-shell-v2-3';
 const SHELL=['./','./index.html','./app.js','./manifest.webmanifest','./icon.png','./icon.svg'];
 self.addEventListener('install',event=>{event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(SHELL)));self.skipWaiting();});
 self.addEventListener('activate',event=>{event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))));self.clients.claim();});

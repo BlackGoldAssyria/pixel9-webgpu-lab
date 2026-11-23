@@ -22,7 +22,7 @@ The app is already in the repository root: `index.html`, `app.js`, `sw.js`, `man
 
 - Inference is on-device after the model is downloaded, but libraries and models are retrieved from third-party servers. Do not enter confidential prompts.
 - Benchmark results are session-only; only memory progress checkpoints persist in localStorage.
-- The memory probe does not measure total GPU VRAM.
+- The memory probe holds 32 MiB GPU storage buffers cumulatively, clears each on the GPU, and verifies five nonzero samples via readback. It does not measure total GPU VRAM or validate custom compute shaders.
 - The service worker caches only the application shell. For updates, bump its CACHE version, reload to install it, and reload again if necessary.
 - Running larger memory tests can terminate the Chrome tab or PWA. Large models can fail to load.
 - The `icon.svg` is a scalable installed-app icon; `icon.png` supplies a 192px fallback. Exact Chrome install behavior should be verified on the Pixel.
