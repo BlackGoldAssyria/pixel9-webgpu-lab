@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en"><head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0b1424"><meta name="description" content="Local WebGPU memory and Transformers.js model benchmark">
+<link rel="manifest" href="./manifest.webmanifest"><link rel="icon" href="./icon.png">
+<title>Pixel 9 Local AI Lab</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;background:#0b1424;color:#eaf0ff}*{box-sizing:border-box}body{margin:0;padding:18px 12px 65px}main{max-width:800px;margin:auto}h1{font-size:1.7rem;margin:0 0 5px}h2{font-size:1.12rem;margin:0 0 10px}p{line-height:1.5;color:#b5c3db;margin:8px 0 13px}small,.muted{color:#a6b7d3}section{background:#14223a;border:1px solid #304664;border-radius:14px;padding:16px;margin:14px 0}label{display:block;font-weight:600;font-size:.91rem;margin:13px 0 6px}select,textarea,input[type=number],button{font:inherit;border-radius:9px}select,textarea,input[type=number]{width:100%;padding:12px;background:#091321;color:#f0f6ff;border:1px solid #526b91}textarea{min-height:110px;resize:vertical}button{border:0;background:#73b6ff;color:#061427;font-weight:700;padding:11px 14px;margin:8px 6px 5px 0;cursor:pointer}button.secondary{background:#344966;color:#f4f8ff}button.danger{background:#ffbe73;color:#241200}button:disabled{opacity:.45;cursor:not-allowed}.kvs{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.kv{background:#0b172a;padding:11px;border-radius:10px;overflow-wrap:anywhere}.key{font-size:.75rem;color:#a6b7d3}.value{margin-top:4px;font-weight:700}.help{font-size:.86rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:300px;overflow:auto;padding:12px;border-radius:10px;background:#091321;line-height:1.45;font-size:.81rem}progress{width:100%;height:14px;margin-top:7px}a{color:#8ac7ff}details{border-radius:9px;background:#101c30;padding:12px;margin-top:10px}summary{cursor:pointer;font-weight:600}.pill{display:inline-block;color:#d7eafe;background:#264568;padding:4px 9px;border-radius:20px;font-size:.8rem}.warn{border-left:3px solid #ffc27a;padding-left:10px}.status{font-weight:600;color:#c6e1ff;overflow-wrap:anywhere}table{width:100%;border-collapse:collapse;font-size:.82rem;display:block;overflow-x:auto}th,td{padding:9px 6px;text-align:left;border-bottom:1px solid #345070;white-space:nowrap}td.out{max-width:200px;white-space:normal}.actions{margin-top:9px}footer{color:#a6b7d3;font-size:.83rem;margin:22px 2px}.inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.results{overflow-x:auto}
+</style></head><body><main>
+<header><div class="pill">v2.1 · GitHub Pages PWA</div><h1>Pixel 9 · Local AI Lab</h1><p>WebGPU memory probe + local Transformers.js inference. No Android app or terminal required. Models run on-device, but JavaScript and model files initially download from external servers. Don't use confidential prompts.</p></header>
+<section aria-labelledby="device-title"><h2 id="device-title">1 · Device capabilities</h2><div class="kvs">
+<div class="kv"><div class="key">Secure origin</div><div class="value" id="secure">Checking…</div></div>
+<div class="kv"><div class="key">WebGPU</div><div class="value" id="webgpu">Checking…</div></div>
+<div class="kv"><div class="key">PWA / offline shell</div><div class="value" id="pwa">Checking…</div></div>
+<div class="kv"><div class="key">Adapter / GPU</div><div class="value" id="adapter">Checking…</div></div>
+<div class="kv"><div class="key">shader-f16</div><div class="value" id="f16">Checking…</div></div>
+<div class="kv"><div class="key">Largest buffer</div><div class="value" id="maxbuffer">—</div></div>
+<div class="kv"><div class="key">Storage binding</div><div class="value" id="maxbinding">—</div></div>
+<div class="kv"><div class="key">Reported device RAM (approx.)</div><div class="value" id="ram">—</div></div>
+<div class="kv"><div class="key">Browser</div><div class="value" id="browser">—</div></div>
+</div><details><summary>Adapter features and additional diagnostic data</summary><pre id="adapter-debug">Checking…</pre></details><button class="secondary" id="rescan">Rescan GPU</button></section>
+<section aria-labelledby="memory-title"><h2 id="memory-title">2 · Cumulative WebGPU memory probe</h2>
+<p class="warn">Start conservatively. This test holds successive GPU buffers and touches one word per 4 KiB page, then reads sampled pages back. It may cause Chrome to slow down or close. <b>It does not measure physical VRAM or prove all model weights will fit.</b> Do not run alongside a loaded model.</p>
+<label for="memlimit">Stop at this total allocation</label>
+<select id="memlimit"><option value="256">256 MiB (very cautious)</option><option value="512" selected>512 MiB (recommended first)</option><option value="768">768 MiB</option><option value="1024">1,024 MiB</option><option value="1536">1,536 MiB (advanced)</option><option value="2048">2,048 MiB (high risk)</option><option value="2560">2,560 MiB (high risk)</option><option value="3072">3,072 MiB (high risk)</option></select>
+<p class="help">One 32 MiB buffer per step. Success means the buffers were allocated, page-touched and sample-checked, not that there is that much unused RAM. High-risk limits (above 1,024 MiB) require an extra confirmation and can crash the browser. Memory progress checkpoints (numbers only) are saved locally so a crash can be recognised after reopening.</p>
+<div class="actions"><button id="mem-start">Start memory test</button><button class="danger" id="mem-stop" disabled>Stop and release</button></div>
+<div class="status" id="mem-status" role="status">Not started.</div><p class="help" id="mem-checkpoint"></p><progress id="mem-progress" max="512" value="0"></progress>
+<div class="kvs"><div class="kv"><div class="key">Largest cumulative pass</div><div class="value" id="mem-pass">—</div></div><div class="kv"><div class="key">Reason for stopping</div><div class="value" id="mem-result">—</div></div></div>
+</section>
+<section aria-labelledby="model-title"><h2 id="model-title">3 · Local model loading and generation</h2>
+<label for="model">Model (size rises down the list)</label><select id="model">
+<option value="small">SmolLM2 135M Instruct · first smoke test</option>
+<option value="smol360" selected>SmolLM2 360M Instruct · ~272 MB q4f16 weights</option>
+<option value="lfm350">LFM2.5 350M · ~276 MB q4 weights</option>
+<option value="gemma1b">Gemma 3 1B IT · ~763 MB q4f16 weights + extras</option>
+<option value="lfm12">LFM2 1.2B · ~1.2 GB q4 weights + extras</option>
+<option value="smol17">SmolLM2 1.7B Instruct · ~1.41 GB q4 weights + extras</option>
+</select>
+<label for="backend">Backend</label><select id="backend"><option value="webgpu" selected>WebGPU · GPU</option><option value="wasm">WebAssembly · CPU (may be slow)</option></select>
+<label for="dtype">Quantisation</label><select id="dtype"><option value="auto" selected>Auto (recommended per model/backend)</option><option value="q4">q4</option><option value="q4f16">q4f16</option><option value="q8">q8</option></select>
+<label for="max-tokens">Maximum generated tokens</label><select id="max-tokens"><option value="32">32</option><option value="64" selected>64</option><option value="128">128</option></select>
+<label for="prompt">Test prompt</label><textarea id="prompt">You are choosing one of three actions: inspect, repair, or stop. A device reports a missing status value. Return only JSON with keys "action" and "reason". Choose the safest action when evidence is missing.</textarea>
+<div class="actions"><button id="load">Download / load model</button><button id="generate" disabled>Generate and benchmark</button><button class="secondary" id="unload" disabled>Unload model</button></div>
+<div class="status" id="model-status" role="status">No model loaded.</div><progress id="model-progress" max="100" value="0" hidden></progress>
+<div class="kvs"><div class="kv"><div class="key">Load time (including downloads)</div><div class="value" id="load-ms">—</div></div>
+<div class="kv"><div class="key">First streamed text*</div><div class="value" id="first-ms">—</div></div>
+<div class="kv"><div class="key">Total generation time</div><div class="value" id="generation-ms">—</div></div>
+<div class="kv"><div class="key">Output throughput*</div><div class="value" id="tokps">—</div></div></div>
+<p class="help">*First streamed text approximates first-token latency. Throughput = retokenised output ÷ full generation time, including prompt processing; not comparable to Ollama's decode-only tok/s. Large models may exceed your browser's available memory.</p>
+<label>Full model response</label><pre id="answer">No response yet.</pre></section>
+<section aria-labelledby="export-title"><h2 id="export-title">4 · Results and export</h2>
+<p>Results remain in memory until you leave or reload this page. Export before closing. Each model generation stores the prompt, complete answer, timings, chosen model and backend; memory tests store the pass/fail details.</p>
+<div class="actions"><button class="secondary" id="json">Export JSON</button><button class="secondary" id="csv">Export CSV</button><button class="secondary" id="copy">Copy summary</button></div>
+<div class="results"><table><thead><tr><th>Test</th><th>Outcome</th><th>Time</th><th>Details</th></tr></thead><tbody id="results"><tr><td colspan="4">No results yet.</td></tr></tbody></table></div>
+<details><summary>Diagnostic events</summary><pre id="log">Ready.</pre></details></section>
+<footer>For best results: run over HTTPS in regular Chrome, keep screen on, close other heavy tabs, use Wi-Fi for initial downloads, and reload between large models. Optional PWA installation is not required and may be restricted by IT. The PWA shell can cache but model availability offline is not guaranteed.</footer>
+</main><script type="module" src="./app.js"></script></body></html>
